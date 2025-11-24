@@ -1,0 +1,8 @@
+*__pycache__
+wandb/
+slurm*
+pretrained_surrogate_results/
+bo_results/
+data/data_2k.json
+data/od_datasets.json
+data/taskset_chosen.json
