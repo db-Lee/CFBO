@@ -187,7 +187,7 @@ def main():
     parser.add_argument('--c', type=float, default=1.0)
     
     # Paths and execution
-    parser.add_argument('--output_dir', default='./output')
+    parser.add_argument('--output_dir', default='./results')
     parser.add_argument('--model_ckpt', default=None)
     parser.add_argument('--seed', type=int, default=1)
     parser.add_argument('--not_stop', action='store_true')
