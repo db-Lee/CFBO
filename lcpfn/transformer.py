@@ -1,34 +1,45 @@
 import math
-from typing import Optional
+from typing import Optional, Tuple
 
 import torch
 import torch.nn as nn
-from torch import Tensor
 from torch.nn import TransformerEncoder, TransformerEncoderLayer
 
-from lcpfn.utils import bool_mask_to_att_mask
+from .bar_distribution import BarDistribution
 
+# https://github.com/automl/lcpfn/blob/ba892f6f451027f69c50edf00c765ded98c75d30/lcpfn/utils.py#L239C1-L244C6   
+def bool_mask_to_att_mask(mask):
+    return (
+        mask.float()
+        .masked_fill(mask == 0, float("-inf"))
+        .masked_fill(mask == 1, float(0.0))
+    )
+    
 class Normalize(nn.Module):
-    def __init__(self, mean: torch.FloatTensor, std: torch.FloatTensor):
+    def __init__(self, mean: torch.Tensor, std: torch.Tensor):
         super().__init__()
         self.register_buffer('mean', mean)
         self.register_buffer('std', std)
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         return (x-self.mean)/(self.std+1e-8)
-
+ 
 class TransformerModel(nn.Module):
+    
     def __init__(
         self,
-        dim_x,
-        d_output,
-        d_model,
-        dim_feedforward, 
-        nlayers, 
-        dropout=0.0, 
-        data_stats=None,
-        activation='gelu',
-        criterion=None
+        dim_x: int,
+        d_output: int,
+        d_model: int,
+        dim_feedforward: int,
+        nlayers: int, 
+        dropout: float = 0.0, 
+        data_stats : Optional[Tuple[
+            torch.Tensor, torch.Tensor, torch.Tensor,
+            torch.Tensor, torch.Tensor, torch.Tensor
+        ]] = None,
+        activation: str = 'gelu',
+        criterion: Optional[BarDistribution] = None
     ):
         super().__init__()
         self.model_type = 'Transformer'
@@ -58,20 +69,23 @@ class TransformerModel(nn.Module):
         )
 
         self.decoder = nn.Sequential(
-            nn.Linear(d_model, dim_feedforward), nn.GELU(), nn.Linear(dim_feedforward, d_output))
+            nn.Linear(d_model, dim_feedforward),
+            nn.GELU(),
+            nn.Linear(dim_feedforward, d_output)
+        )
         self.criterion = criterion
 
         self.init_weights()
 
     @staticmethod
-    def generate_D_q_matrix(sz, query_size):
+    def generate_D_q_matrix(sz: int, query_size: int) -> torch.Tensor:
         train_size = sz-query_size
         mask = torch.zeros(sz,sz) == 0
         mask[:,train_size:].zero_()
         mask |= torch.eye(sz) == 1
         return bool_mask_to_att_mask(mask)
     
-    def init_weights(self):
+    def init_weights(self) -> None:
         for layer in self.transformer.layers:
             nn.init.zeros_(layer.linear2.weight)
             nn.init.zeros_(layer.linear2.bias)
@@ -80,7 +94,16 @@ class TransformerModel(nn.Module):
                 nn.init.zeros_(attn.out_proj.weight)
                 nn.init.zeros_(attn.out_proj.bias)
 
-    def forward(self, tc_0, yc_0, xc, tc, yc, xt, tt):
+    def forward(
+        self, 
+        tc_0: torch.Tensor,
+        yc_0: torch.Tensor,
+        xc: torch.Tensor,
+        tc: torch.Tensor,
+        yc: torch.Tensor,
+        xt: torch.Tensor,
+        tt: torch.Tensor
+    ) -> torch.Tensor:
         device = tt.device        
         B, M, N = tt.shape[0], 1, tt.shape[1]
         

@@ -1,10 +1,11 @@
+# https://github.com/automl/lcpfn/blob/main/lcpfn/bar_distribution.py
+
 import torch
 from torch import nn
 from torch.distributions import Categorical
 
-
 class BarDistribution(nn.Module):
-    def __init__(self, borders: torch.Tensor, smoothing=.0): # here borders should start with min and end with max, where all values lie in (min,max) and are sorted
+    def __init__(self, borders: torch.Tensor, smoothing: float = .0): # here borders should start with min and end with max, where all values lie in (min,max) and are sorted
         # sorted list of borders
         super().__init__()
         assert len(borders.shape) == 1
@@ -35,7 +36,6 @@ class BarDistribution(nn.Module):
 
         bucket_log_probs = torch.log_softmax(logits, -1)
         scaled_bucket_log_probs = bucket_log_probs - torch.log(self.bucket_widths)
-        #print(bucket_log_probs, logits.shape)
 
         nll_loss = -scaled_bucket_log_probs.gather(-1,target_sample.unsqueeze(-1)).squeeze(-1)
 
@@ -198,6 +198,7 @@ class FullSupportBarDistribution(BarDistribution):
 
         return -log_probs
     
+    # NOTE added method
     def sample(self, logits, num_samples=100):
         side_normals = (self.halfnormal_with_p_weight_before(self.bucket_widths[0]),
                         self.halfnormal_with_p_weight_before(self.bucket_widths[-1]))
