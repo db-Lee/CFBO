@@ -125,7 +125,7 @@ def main(args):
         loss = losses.mean()
         logger.meter("meta_train", "loss", loss)
 
-        if args.beta > 0.:
+        if args.lambda_pfn > 0.:
             t_0, y_0, xc, tc, yc, xt, tt, yt = meta_train_sampler.sample_prior()
             yt_pred = model(t_0, y_0, xc, tc, yc, xt, tt)
             losses = criterion(yt_pred, yt.squeeze(-1).contiguous())
@@ -135,7 +135,7 @@ def main(args):
             reg_loss = 0.
 
         opt.zero_grad()
-        (loss + args.beta*reg_loss).backward()
+        (loss + args.lambda_pfn*reg_loss).backward()
         if args.grad_norm > 0.:
             nn.utils.clip_grad_norm_(model.parameters(), args.grad_norm)
         opt.step()
@@ -151,7 +151,7 @@ def main(args):
                     yt_pred = model(t_0, y_0, xc, tc, yc, xt, tt)
                     losses = criterion(yt_pred, yt.squeeze(-1))
                     loss += losses.mean() / args.test_iteration
-            logger.meter("meta_test", "scatter loss", loss)
+            logger.meter("meta_test", "loss", loss)
             model.train()
 
         logger.step()
@@ -166,15 +166,16 @@ if __name__ == '__main__':
 
     # dir
     parser.add_argument('--data_dir', type=str, default="./data")
-    parser.add_argument('--save_dir', type=str, default="./pretrained_surrogate_results")
-    parser.add_argument('--exp_name', type=str, default="submission")
+    parser.add_argument('--save_dir', type=str, default="checkpoints")
+    parser.add_argument('--exp_name', type=str, default=None)
 
     # wandb
-    parser.add_argument('--wandb_entity', type=str, default="dongbok")
-    parser.add_argument('--wandb_project_name', type=str, default="CMBO-reproduce")
+    parser.add_argument('--wandb_entity', type=str, default=None)
+    parser.add_argument('--wandb_project_name', type=str, default="CFBO")
 
     # hparams for data
-    parser.add_argument('--benchmark_name', type=str, default='odbench')
+    parser.add_argument('--benchmark_name', type=str, default='lcbench',
+                        choices=['lcbench', 'taskset', 'pd1', 'odbench'])
     parser.add_argument('--meta_batch_size', type=int, default=4)
     parser.add_argument('--batch_size', type=int, default=2048)
     parser.add_argument('--prior_batch_size', type=int, default=128)
@@ -194,7 +195,7 @@ if __name__ == '__main__':
     parser.add_argument('--lr', type=float, default=2e-5)
     parser.add_argument('--wd', type=float, default=0.0)
     parser.add_argument('--grad_norm', type=float, default=1.0)
-    parser.add_argument('--beta', type=float, default=0.1)
+    parser.add_argument('--lambda_pfn', type=float, default=0.1)
 
     # hparams for logger
     parser.add_argument('--print_every', type=int, default=100)

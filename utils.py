@@ -246,7 +246,7 @@ class Logger:
             if self.print_to_stdout:
                 print(f"{name} is saved to {self.save_dir}")
 
-    def save_object(self, suffix: Optional[str] = None) -> None:
+    def save_objects(self, suffix: Optional[str] = None) -> None:
         if self.save_dir is None:
             return
 
