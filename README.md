@@ -31,8 +31,7 @@ Download the dataset from this [Google Drive link](https://drive.google.com/file
 python train.py --benchmark_name BENCHMARK_NAME
 ```
 
-Alternatively, download pretrained checkpoints from this  
-[Google Drive link](https://drive.google.com/file/d/1SjCSx63qFgAOpKqyXu8rpYx9IH4BUTPb/view?usp=sharing) and unzip them into this repository.
+Alternatively, download pretrained checkpoints from this [Google Drive link](https://drive.google.com/file/d/1SjCSx63qFgAOpKqyXu8rpYx9IH4BUTPb/view?usp=sharing) and unzip them into this repository.
 
 ---
 
