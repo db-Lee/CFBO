@@ -1,0 +1,9 @@
+ifBO
+wandb==0.22.1
+matplotlib==3.10.6
+fastparquet==2024.11.0
+gpytorch==1.14.3
+syne-tune==0.14.2
+tqdm==4.67.1
+scikit-learn==1.7.2
+huggingface_hub==1.1.7

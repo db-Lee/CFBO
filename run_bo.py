@@ -14,6 +14,7 @@ from benchmark import (
 )
 from algorithm import (
     DyHPOConfig, DyHPO,
+    ifBOConfig, ifBO,
     CFBOConfig, CFBO
 )
 from utils import get_utility_function
@@ -48,7 +49,7 @@ class BenchmarkRunner:
             return META_TEST_DATASET_DICT[self.args.benchmark_name]
         return [self.args.dataset_name]
     
-    def run_single_dataset(self, dataset_name: str) -> Dict[str, Any]:
+    def run_single_dataset(self, dataset_name: str) -> None:
         self.benchmark.set_dataset_name(dataset_name)
         
         # Setup output directory
@@ -79,6 +80,16 @@ class BenchmarkRunner:
                 output_path=str(output_dir)
             )            
             ALGO_CLASS = DyHPO
+        elif self.args.algorithm == "ifbo":
+            config = ifBOConfig(
+                model_ckpt=None,
+                seed=self.args.seed,
+                max_benchmark_epochs=self.benchmark.max_budget,
+                total_budget=self.args.budget_limit,
+                dataset_name=dataset_name,
+                output_path=str(output_dir)
+            )            
+            ALGO_CLASS = ifBO
         elif self.args.algorithm == "cfbo":
             config = CFBOConfig(
                 model_ckpt=self.args.model_ckpt,
@@ -97,11 +108,10 @@ class BenchmarkRunner:
         incumbent, trajectory, utilities = 0.0, [], []
         stop_budget = self.args.budget_limit
         first_stop = False
-        
-        desc = f"{self.args.benchmark_name}/{dataset_name} (α={self.args.alpha})"
+                
         print(f"\n{'='*100}")
-        print(f"Dataset: {dataset_name}, Budget: {self.args.budget_limit}")
-        
+        desc = f"{self.args.benchmark_name}/{dataset_name}"
+        desc += f" (B={self.args.budget_limit}, c={self.args.c}, α={self.args.alpha})"        
         for budget in trange(1, self.args.budget_limit + 1, desc=desc):
             hp_index, t, stop_sign = algo.suggest()
             
@@ -142,35 +152,15 @@ class BenchmarkRunner:
         
         print(f"Results saved to: {output_dir}")
         print(f"Final: incumbent={incumbent:.4f}, normalized_utility={results['final_normalized_utility']:.4f}")
-        
-        return results
     
     def run(self):
         datasets = self.get_datasets()
-        all_results = {}
         
-        print(f"\nRunning {len(datasets)} dataset(s): {datasets}")
-        
+        print(f"\nRunning {len(datasets)} dataset(s): {datasets}")        
         for dataset in datasets:
-            all_results[dataset] = self.run_single_dataset(dataset)
-        
-        # Save summary if multiple datasets
-        if len(datasets) > 1:
-            summary_path = os.path.join(
-                self.args.output_dir,
-                self.args.benchmark_name,
-                'all_results_summary.json'
-            )
-            summary = {ds: {'final_incumbent': res['final_incumbent'],
-                           'final_normalized_utility': res['final_normalized_utility'],
-                           'stop_budget': res['stop_budget']} 
-                      for ds, res in all_results.items()}
-            with open(summary_path, 'w') as f:
-                json.dump(summary, f, indent=2)
-            print(f"\nSummary saved to: {summary_path}")
-
-
-def main():
+            self.run_single_dataset(dataset)
+            
+if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='CFBO Optimization')
     
     # Data and benchmark
@@ -183,8 +173,8 @@ def main():
     parser.add_argument('--algorithm', default='cfbo', 
                        choices=['dyhpo', 'ifbo', 'cfbo'])
     parser.add_argument('--budget_limit', type=int, default=300)
-    parser.add_argument('--alpha', type=float, default=0.0)
     parser.add_argument('--c', type=float, default=1.0)
+    parser.add_argument('--alpha', type=float, default=0.0)    
     
     # Paths and execution
     parser.add_argument('--output_dir', default='./results')
@@ -195,6 +185,3 @@ def main():
     args = parser.parse_args()
     
     BenchmarkRunner(args).run()
-
-if __name__ == "__main__":
-    main()

@@ -10,9 +10,11 @@ from dataclasses import dataclass
 import numpy as np
 import torch
 import torch.nn.functional as F
+from torch.distributions import Categorical
 from torch.utils.data import TensorDataset, DataLoader
 import scipy.stats
 
+from ifbo.surrogate import FTPFN
 from lcpfn import TransformerModel, get_bucket_limits, BarDistribution
 from .base import BaseConfig, BaseAlgorithm
 
@@ -31,6 +33,7 @@ class CFBOConfig(BaseConfig):
     y_0: float = 0.
     beta: float = -1.    
     num_mc_samples: int = 1000
+    num_average_samples: int =5
     batch_size: int = 500
 
 class CFBO(BaseAlgorithm):
@@ -58,33 +61,42 @@ class CFBO(BaseAlgorithm):
         self.u_min = np.inf
     
     @ override
-    def _initialize_model(self) -> None:        
+    def _initialize_model(self) -> None:
         config = self.config
         
-        # Setup criterion
-        borders = get_bucket_limits(
-            num_outputs=config.d_output,
-            full_range=(0, 1)
-        )
-        self.criterion = BarDistribution(borders)
-        
-        # Initialize model
-        self.model = TransformerModel(
-            dim_x=self.hp_candidates.shape[1],
-            d_output=config.d_output,
-            d_model=config.d_model,
-            dim_feedforward=2 * config.d_model,
-            nlayers=config.nlayers,
-            dropout=config.dropout,
-            data_stats=None,
-            activation="gelu",
-            criterion=self.criterion
-        ).to(self.dev)
-        
-        # Load checkpoint
-        checkpoint = torch.load(
-            self.config.model_ckpt, map_location="cpu")
-        self.model.load_state_dict(checkpoint, strict=True)
+        if config.model_ckpt is None:
+            # Without transfer learning
+            self.use_transfer = False
+            self.model = FTPFN(version="0.0.1").to(self.dev)
+            self.criterion = self.model.model.criterion
+        else:
+            # With transfer learning
+            self.use_transfer = True
+            
+            # Setup criterion
+            borders = get_bucket_limits(
+                num_outputs=config.d_output,
+                full_range=(0, 1)
+            )
+            self.criterion = BarDistribution(borders)
+            
+            # Initialize model
+            self.model = TransformerModel(
+                dim_x=self.hp_candidates.shape[1],
+                d_output=config.d_output,
+                d_model=config.d_model,
+                dim_feedforward=2 * config.d_model,
+                nlayers=config.nlayers,
+                dropout=config.dropout,
+                data_stats=None,
+                activation="gelu",
+                criterion=self.criterion
+            ).to(self.dev)
+            
+            # Load checkpoint
+            checkpoint = torch.load(
+                self.config.model_ckpt, map_location="cpu")
+            self.model.load_state_dict(checkpoint, strict=True)
         
         # Enable eval mode and gradient checkpointing for memory efficiency
         self.model.eval()
@@ -153,17 +165,34 @@ class CFBO(BaseAlgorithm):
     @torch.no_grad()
     @ override
     def hpo(self) -> Tuple[int, bool]:
-        # Get model predictions
+        if not self.use_transfer and not self.initialized:
+            best_index = np.random.randint(0, self.num_hps)
+            stop_sign = False
+            
+            return best_index, stop_sign
+                
         num_samples = self.config.num_mc_samples
-        sampled_graphs = self.predict(
-            train_data=self._prepare_train_data(),
-            test_data=self._prepare_test_data(),
-            num_mc_samples=num_samples * 5
-        )
+        num_average_samples = self.config.num_average_samples
+        train_data = self._prepare_train_data()
+        test_data = self._prepare_test_data()
+        
+        # Get model predictions
+        if self.use_transfer:
+            sampled_graphs = self.predict_with_transfer(
+                train_data=train_data,
+                test_data=test_data,
+                num_mc_samples=num_samples * num_average_samples
+            )
+        else:
+            sampled_graphs = self.predict_without_transfer(
+                train_data=train_data,
+                test_data=test_data,
+                num_mc_samples=num_samples * num_average_samples
+            )
         
         # Reshape and average for stability
         sampled_graphs = sampled_graphs.view(
-            self.num_hps, 5, num_samples, self.config.max_benchmark_epochs
+            self.num_hps, num_average_samples, num_samples, self.config.max_benchmark_epochs
         ).mean(dim=1)
         
         # Current utility
@@ -199,25 +228,27 @@ class CFBO(BaseAlgorithm):
             if max_t[best_index] < self.config.max_benchmark_epochs else 0.0
         
         # Compute stopping criterion
-        stop_sign = self._compute_stop_sign(current_utility, best_prob)
+        stop_sign = self._compute_stop_sign(current_utility, best_prob)        
         
+        # log probs
         self.probs.append(best_prob)
+        
         return best_index, stop_sign
     
+    @ override
     def train(self) -> None:
         pass
     
-    @torch.no_grad()
-    def predict(
+    @ torch.no_grad()
+    def predict_with_transfer(
         self,
         train_data: Dict[str, torch.Tensor],
         test_data: Dict[str, torch.Tensor],
         num_mc_samples: int
-    ) -> torch.Tensor:        
-        # Transformer model prediction
+    ) -> torch.Tensor:
+        
         self.model.eval()
         
-        # Prepare training data
         t_0 = train_data['t_0'][None, None, :]
         y_0 = train_data['y_0'][None, None, :]
         
@@ -227,7 +258,6 @@ class CFBO(BaseAlgorithm):
             tc = train_data['tc'][None, :, :]
             yc = train_data['yc'][None, :, :]
         
-        # Prepare test data
         xt = test_data['xt']
         tt = test_data['tt']
         T = tt.shape[0]
@@ -275,12 +305,54 @@ class CFBO(BaseAlgorithm):
             logits_list.append(logit)
         
         # Concatenate and sample
-        logits = torch.cat(logits_list, dim=0)
-        sampled_graphs = self.criterion.sample(
-            logits, num_samples=num_mc_samples
-        ).permute(1, 0, 2)
+        logits = torch.cat(logits_list, dim=0)        
+        return self.criterion.sample(
+                logits, num_samples=num_mc_samples
+            ).permute(1, 0, 2)
         
-        return sampled_graphs 
+    @ torch.no_grad()
+    def predict_without_transfer(
+        self,
+        train_data: Dict[str, torch.Tensor],
+        test_data: Dict[str, torch.Tensor],
+        num_mc_samples: int
+    ) -> torch.Tensor:
+        
+        self.model.eval()
+        
+        xc = train_data.get('xc')
+        tc = train_data.get('tc')
+        yc = train_data.get('yc')
+        
+        xt = test_data['xt']  # num_hps, dim_x
+        tt = test_data['tt']  # T, 1
+        
+        num_hps, dim_x = xt.shape
+        T = tt.shape[0]
+        
+        # Add placeholder dimension for PFN model format
+        xc = torch.cat([torch.zeros_like(tc), tc, xc], dim=-1)
+        
+        # Prepare test data for all HP/time combinations
+        xt_expanded = xt[:, None, :].repeat(1, T, 1).reshape(-1, dim_x)
+        tt_expanded = tt[None, :, :].repeat(num_hps, 1, 1).reshape(-1, 1)
+        xt_formatted = torch.cat([torch.zeros_like(tt_expanded), tt_expanded, xt_expanded], dim=-1)
+        
+        # Get model predictions
+        logits = self.model(xc, yc, xt_formatted)
+        
+        # Reshape logits
+        logits = logits.reshape(num_hps, T, -1)
+        
+        # Sampling
+        bucket_idx = Categorical(logits=logits).sample(torch.Size([num_mc_samples,]))
+        sampled = []
+        for b_idx in bucket_idx:
+            bucket_values = self.criterion.borders[:-1] + \
+                self.criterion.bucket_widths * torch.rand_like(self.criterion.bucket_widths)
+            sampled.append(bucket_values[b_idx])            
+        
+        return torch.stack(sampled, dim=0)
     
     def _precompute_tensors(self) -> None:
         # Initial values
@@ -353,18 +425,3 @@ class CFBO(BaseAlgorithm):
         else:
             # All fully explored
             return acq.argmax().item()
-    
-    def get_best_configuration(self) -> Tuple[int, float]:
-        if not self.performances:
-            return -1, 0.0
-        
-        best_hp = -1
-        best_score = -np.inf
-        
-        for hp_idx, scores in self.performances.items():
-            max_score = max(scores) if scores else -np.inf
-            if max_score > best_score:
-                best_score = max_score
-                best_hp = hp_idx
-        
-        return best_hp, best_score
