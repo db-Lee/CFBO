@@ -37,11 +37,7 @@ Alternatively, download pretrained checkpoints from this [Google Drive link](htt
 
 ### Cost-Sensitive Bayesian Optimization
 
-We consider the following utility function:
-$$
-U(b, \tilde{y}_b) = \tilde{y}_b - \alpha\left(\frac{b}{B}\right)^c,
-$$
-where:
+We consider the following utility function: $U(b, \tilde{y}_b) = \tilde{y}_b - \alpha\left(\frac{b}{B}\right)^c$, where:
 
 - $b$ denotes the currently consumed budget, and $\tilde{y}_b$ denotes the best performance observed up to budget $b$,
 - **budget\_limit** ($B \in \mathbb{N}$): the maximum allowable optimization budget,
