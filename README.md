@@ -67,7 +67,7 @@ python run_bo.py --algorithm CFBO --benchmark_name BENCHMARK_NAME --alpha ALPHA 
 
 ---
 
-## Citation
+### Citation
 
 ```bibtex
 @inproceedings{CFBO,
