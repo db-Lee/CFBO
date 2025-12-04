@@ -49,8 +49,9 @@ We consider the following utility function: $U(b, \tilde{y}_b) = \tilde{y}_b - \
 Run BO:
 
 ```bash
-# DyHPO
 # BENCHMARK_NAME ∈ ["lcbench", "taskset", "pd1", "odbench"]
+
+# DyHPO
 python run_bo.py --algorithm dyhpo --benchmark_name BENCHMARK_NAME --alpha ALPHA --c C
 
 # ifBO
