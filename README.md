@@ -1,5 +1,5 @@
 # Cost-Sensitive Freeze-Thaw Bayesian Optimization for Efficient Hyperparameter Tuning
-[![arXiv](https://img.shields.io/badge/arXiv-Read%20paper-b31b1b?style=flat&logo=arXiv&logoColor=white)](https://arxiv.org/abs/2510.00492)
+[![arXiv](https://img.shields.io/badge/arXiv-Read%20paper-b31b1b?style=flat&logo=arXiv&logoColor=white)](https://arxiv.org/pdf/2510.21379)
 
 This repository contains the official codebase for our NeurIPS 2025 paper,  
 **“Cost-Sensitive Freeze-Thaw Bayesian Optimization for Efficient Hyperparameter Tuning.”**
