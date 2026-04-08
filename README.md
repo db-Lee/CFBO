@@ -78,3 +78,11 @@ python run_bo.py --algorithm CFBO --benchmark_name BENCHMARK_NAME --alpha ALPHA 
     url={https://openreview.net/pdf?id=ZUb4JpNoJe}
 }
 ```
+
+---
+
+### Acknowledgement
+
+```
+This work was supported by Institute for Information & communications Technology Planning & Evaluation (IITP) grant funded by the Korea government (MSIT) (RS-2019-II190075, Artificial Intelligence Graduate School Program (KAIST)) and Center for Applied Research in Artificial Intelligence (CARAI) grant funded by DAPA and ADD (UD190031RD).
+```
